@@ -1,10 +1,48 @@
 use serde::Deserialize;
-use std::{error::Error, process};
+use std::{error::Error, fmt::Display};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug)]
+enum NetworkError {
+    NodeNotFound(String),
+    Io(std::io::Error),
+    Csv(csv::Error),
+}
+
+impl Display for NetworkError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NetworkError::NodeNotFound(id) => write!(f, "Node not found: {}", id),
+            NetworkError::Io(err) => write!(f, "IO error: {}", err),
+            NetworkError::Csv(err) => write!(f, "CSV error: {}", err),
+        }
+    }
+}
+
+impl Error for NetworkError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            NetworkError::Io(err) => Some(err),
+            NetworkError::Csv(err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl From<std::io::Error> for NetworkError {
+    fn from(value: std::io::Error) -> Self {
+        NetworkError::Io(value)
+    }
+}
+
+impl From<csv::Error> for NetworkError {
+    fn from(value: csv::Error) -> Self {
+        NetworkError::Csv(value)
+    }
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
 struct Node {
     id: String,
-    #[serde(skip)]
     point: (u8, u8),
 }
 
@@ -16,31 +54,7 @@ struct Link {
     capacity: u8,
     weight: u8,
 }
-fn main() -> Result<(), Box<dyn Error>> {
-    fn load_network_links() -> Result<Vec<Link>, Box<dyn Error>> {
-        let mut rdr = csv::Reader::from_path("configuration/network.csv")?;
-        let mut network_links: Vec<Link> = Vec::new();
 
-        for network in rdr.deserialize() {
-            let loaded_network: Link = network?;
-            network_links.push(loaded_network);
-        }
-        Ok(network_links)
-    }
-
-    match load_network_links() {
-        Ok(networks) => println!("{:?}", networks),
-        Err(e) => println!("An error occured: {}", e),
-    }
-
-    Ok(())
-}
-
-#[cfg(test)]
-mod test {
-    use std::error::Error;
-
-    use crate::Link;
-    #[test]
-    fn network_load_succesfull() {}
+fn main() {
+    todo!();
 }
