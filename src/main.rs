@@ -2,6 +2,7 @@ use petgraph::{
     dot::{Config, Dot},
     graph::{NodeIndex, UnGraph},
 };
+
 use serde::Deserialize;
 use std::{collections::HashMap, error::Error, fmt::Display};
 
@@ -158,7 +159,7 @@ mod test {
                            link_B,Node2,Node3,50,5\n\
                            link_C,Node1,Node3,75,8\n";
 
-        let path = "configuration/network.csv";
+        let path = "configuration/test-network.csv";
         std::fs::create_dir_all("configuration").expect("Failed to create configuration directory");
         std::fs::write(path, csv_content).expect("Failed to write dummy CSV");
 
@@ -204,9 +205,7 @@ mod test {
         assert_eq!(edge_weight.capacity, 100);
         assert_eq!(edge_weight.weight, 10);
 
-        // Clean up the dummy CSV file
         std::fs::remove_file(path).expect("Failed to remove dummy CSV");
-        std::fs::remove_dir("configuration").expect("Failed to remove configuration directory");
     }
 
     #[test]
