@@ -1,18 +1,14 @@
 mod components;
 use crate::components::network::{Network, Node, load_network_links};
-use log::info;
-use petgraph::dot::{Config, Dot};
-use rand::Rng;
 use relm4::ComponentParts;
 use relm4::ComponentSender;
 use relm4::RelmApp;
-use relm4::RelmWidgetExt;
 use relm4::SimpleComponent;
 use relm4::gtk;
+use relm4::gtk::cairo;
 use relm4::gtk::prelude::BoxExt;
-use relm4::gtk::prelude::ButtonExt;
+use relm4::gtk::prelude::DrawingAreaExtManual;
 use relm4::gtk::prelude::GtkWindowExt;
-use relm4::gtk::prelude::OrientableExt;
 use std::error::Error;
 
 struct AppModel {
@@ -25,32 +21,95 @@ enum AppMsg {
     AddPoint((f64, f64)),
 }
 
+#[derive(Default)]
 struct AppWidgets {
-    canvas: gtk::DrawingArea,
+    label: gtk::Label,
 }
 
-#[relm4::component]
 impl SimpleComponent for AppModel {
     type Input = AppMsg;
     type Output = ();
     type Init = Network;
+    type Widgets = AppWidgets;
+    type Root = gtk::Window;
 
-    view! {
-           gtk::Window{
-               set_title: Some("Net Modeler"),
-               set_default_width: 300,
-               set_default_height: 100,
-
-                   }
+    fn init_root() -> Self::Root {
+        gtk::Window::builder()
+            .title("Net Modeler")
+            .default_width(300)
+            .default_height(100)
+            .build()
     }
 
     fn init(
         network: Self::Init,
         root: Self::Root,
-        sender: ComponentSender<Self>,
+        _sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
+        let drawing_area = gtk::DrawingArea::builder()
+            .hexpand(true)
+            .vexpand(true)
+            .build();
+
+        let network_clone = network.clone();
+        drawing_area.set_draw_func(move |_drawing_area, cr, _width, _height| {
+            cr.set_source_rgb(34.0, 51.0, 59.0);
+            cr.paint().expect("Failed to paint background");
+
+            for (link, src_node, dest_node) in network_clone.links() {
+                cr.set_source_rgb(0.5, 0.5, 0.5);
+                cr.set_line_width(2.0);
+                cr.move_to(src_node.point.0, src_node.point.1);
+                cr.line_to(dest_node.point.0, dest_node.point.1);
+                cr.stroke().expect("Failed to draw links");
+
+                // Draw link capacity/weight text
+                let mid_x = (src_node.point.0 + dest_node.point.0) / 2.0;
+                let mid_y = (src_node.point.1 + dest_node.point.1) / 2.0;
+                cr.move_to(mid_x + 5.0, mid_y - 10.0);
+                cr.set_source_rgb(0.0, 0.0, 0.0); // Black text
+                cr.select_font_face("Sans", cairo::FontSlant::Normal, cairo::FontWeight::Normal);
+                cr.set_font_size(12.0);
+                cr.show_text(&format!("W:{}", link.weight))
+                    .expect("Failed to draw link text");
+            }
+
+            for node in network_clone.nodes() {
+                cr.set_source_rgb(0.2, 0.7, 1.0); // Blue color for nodes
+                cr.arc(
+                    node.point.0,
+                    node.point.1,
+                    20.0,
+                    0.0,
+                    2.0 * std::f64::consts::PI,
+                );
+                cr.fill().expect("Failed to draw node circle");
+
+                // Draw node ID text
+                cr.move_to(node.point.0, node.point.1);
+                cr.set_source_rgb(1.0, 1.0, 1.0); // White text
+                cr.select_font_face("Sans", cairo::FontSlant::Normal, cairo::FontWeight::Normal);
+                cr.set_font_size(16.0);
+
+                // Center the text on the node
+                let extents = cr
+                    .text_extents(&node.id)
+                    .expect("Failed to get text extents");
+                cr.move_to(
+                    node.point.0 - extents.width() / 2.0 - extents.x_bearing(),
+                    node.point.1 - extents.height() / 2.0 - extents.y_bearing(),
+                );
+                cr.show_text(&node.id).expect("Failed to draw node text");
+            }
+        });
+
+        let vbox = gtk::Box::builder().spacing(5).build();
+        root.set_child(Some(&vbox));
+        vbox.append(&drawing_area);
+
+        let widgets = AppWidgets::default();
+
         let model = AppModel { network };
-        let widgets = view_output!();
 
         ComponentParts { model, widgets }
     }

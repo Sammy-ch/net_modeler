@@ -1,4 +1,7 @@
-use petgraph::graph::{NodeIndex, UnGraph};
+use petgraph::{
+    graph::{NodeIndex, UnGraph},
+    visit::EdgeRef,
+};
 
 use serde::Deserialize;
 use std::{collections::HashMap, error::Error, fmt::Display};
@@ -48,7 +51,7 @@ pub struct Node {
     pub point: (f64, f64),
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct Link {
     pub link_id: String,
     pub source_node: String,
@@ -57,7 +60,7 @@ pub struct Link {
     pub weight: u8,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Network {
     pub graph: UnGraph<Node, Link>,
     pub node_indices: HashMap<String, NodeIndex>,
@@ -96,9 +99,18 @@ impl Network {
         Ok(())
     }
 
-    // fn nodes(&self) -> impl Iterator<Item = &Node> {
-    //     self.graph.node_weights()
-    // }
+    pub fn nodes(&self) -> impl Iterator<Item = &Node> {
+        self.graph.node_weights()
+    }
+
+    pub fn links(&self) -> impl Iterator<Item = (Link, &Node, &Node)> {
+        self.graph.edge_references().map(|edge_ref| {
+            let (source_idx, dest_idx) = self.graph.edge_endpoints(edge_ref.id()).unwrap();
+            let source_node = self.graph.node_weight(source_idx).unwrap();
+            let dest_node = self.graph.node_weight(dest_idx).unwrap();
+            (edge_ref.weight().clone(), source_node, dest_node)
+        })
+    }
 }
 
 pub fn load_network_links() -> Result<Vec<Link>, NetworkError> {
