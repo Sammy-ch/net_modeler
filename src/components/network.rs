@@ -111,6 +111,72 @@ impl Network {
             (edge_ref.weight().clone(), source_node, dest_node)
         })
     }
+pub fn apply_force_directed_layout(&mut self, width: f64, height: f64, iterations: usize) -> f64 {
+                let k = (width * height / self.graph.node_count().max(1) as f64).sqrt() * 1.5; // Increased for more spread
+                let cooling_factor = 0.9; // Slightly faster cooling
+                let mut temp = width / 5.0; // Higher initial temperature
+                let mut max_displacement: f64 = 0.0;
+
+                let mut displacements: Vec<(f64, f64)> = vec![(0.0, 0.0); self.graph.node_count()];
+
+                for _ in 0..iterations {
+                    displacements.iter_mut().for_each(|d| *d = (0.0, 0.0));
+
+                    // Repulsive forces
+                    for i in 0..self.graph.node_count() {
+                        for j in i + 1..self.graph.node_count() {
+                            let node_i = self.graph.node_weight(NodeIndex::new(i)).unwrap();
+                            let node_j = self.graph.node_weight(NodeIndex::new(j)).unwrap();
+                            let dx = node_j.point.0 - node_i.point.0;
+                            let dy = node_j.point.1 - node_i.point.1;
+                            let dist = (dx * dx + dy * dy).sqrt().max(1e-2);
+                            let force = k * k / dist;
+                            let fx = force * dx / dist;
+                            let fy = force * dy / dist;
+                            displacements[i].0 -= fx;
+                            displacements[i].1 -= fy;
+                            displacements[j].0 += fx;
+                            displacements[j].1 += fy;
+                        }
+                    }
+
+                    // Attractive forces
+                    for edge_ref in self.graph.edge_references() {
+                        let (src_idx, dest_idx) = self.graph.edge_endpoints(edge_ref.id()).unwrap();
+                        let src_node = self.graph.node_weight(src_idx).unwrap();
+                        let dest_node = self.graph.node_weight(dest_idx).unwrap();
+                        let dx = dest_node.point.0 - src_node.point.0;
+                        let dy = dest_node.point.1 - src_node.point.1;
+                        let dist = (dx * dx + dy * dy).sqrt().max(1e-2);
+                        let force = dist * dist / k;
+                        let fx = force * dx / dist;
+                        let fy = force * dy / dist;
+                        displacements[src_idx.index()].0 += fx;
+                        displacements[src_idx.index()].1 += fy;
+                        displacements[dest_idx.index()].0 -= fx;
+                        displacements[dest_idx.index()].1 -= fy;
+                    }
+
+                    // Update positions
+                    max_displacement = 0.0;
+                    for i in 0..self.graph.node_count() {
+                        let disp = displacements[i];
+                        let disp_len = (disp.0 * disp.0 + disp.1 * disp.1).sqrt().max(1e-2);
+                        max_displacement = max_displacement.max(disp_len);
+                        let factor = temp / disp_len;
+                        let node = self.graph.node_weight_mut(NodeIndex::new(i)).unwrap();
+                        node.point.0 += disp.0 * factor;
+                        node.point.1 += disp.1 * factor;
+
+                        node.point.0 = node.point.0.clamp(50.0, width - 50.0);
+                        node.point.1 = node.point.1.clamp(50.0, height - 50.0);
+                    }
+
+                    temp *= cooling_factor;
+                }
+                max_displacement
+            }
+
 }
 
 pub fn load_network_links() -> Result<Vec<Link>, NetworkError> {
