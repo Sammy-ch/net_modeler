@@ -1,24 +1,31 @@
 mod components;
 use crate::components::network::{Network, Node, load_network_links};
+use petgraph::graph::NodeIndex;
 use relm4::ComponentParts;
 use relm4::ComponentSender;
 use relm4::RelmApp;
 use relm4::SimpleComponent;
 use relm4::gtk;
 use relm4::gtk::cairo;
-use relm4::gtk::prelude::BoxExt;
-use relm4::gtk::prelude::DrawingAreaExtManual;
-use relm4::gtk::prelude::GtkWindowExt;
+use relm4::gtk::prelude::{
+    BoxExt, DrawingAreaExtManual, GestureSingleExt, GtkWindowExt, WidgetExt,
+};
 use std::error::Error;
 
 struct AppModel {
     network: Network,
+    dragged_node: Option<NodeIndex>,
+    needs_redraw: bool,
 }
 
 #[derive(Debug)]
 enum AppMsg {
     DrawRequested,
     AddPoint((f64, f64)),
+    UpdateLayout,
+    StartDrag(NodeIndex, f64, f64),
+    UpdateDrag(f64, f64),
+    EndDrag,
 }
 
 struct AppWidgets {
@@ -40,10 +47,57 @@ impl SimpleComponent for AppModel {
             .build()
     }
 
+    fn update_view(&self, widgets: &mut Self::Widgets, _sender: ComponentSender<Self>) {
+        widgets.drawing_area.queue_draw();
+    }
+
+    fn update(&mut self, msg: Self::Input, _sender: ComponentSender<Self>) {
+        match msg {
+            AppMsg::DrawRequested => self.needs_redraw = true,
+            AppMsg::AddPoint((x, y)) => {
+                let new_node = components::network::Node {
+                    id: format!("Node{}", self.network.graph.node_count() + 1),
+                    point: (x, y),
+                };
+                self.network.add_node(new_node);
+            }
+            AppMsg::UpdateLayout => {
+                self.network
+                    .apply_force_directed_layout(800.0, 600.0, 1, self.dragged_node);
+                self.needs_redraw = true;
+            }
+            AppMsg::StartDrag(node_idx, x, y) => {
+                self.dragged_node = Some(node_idx);
+                let node = self.network.graph.node_weight_mut(node_idx).unwrap();
+                node.point = (x, y);
+
+                self.needs_redraw = true;
+            }
+            AppMsg::UpdateDrag(offset_x, offset_y) => {
+                if let Some(node_idx) = self.dragged_node {
+                    let node = self.network.graph.node_weight_mut(node_idx).unwrap();
+                    let (start_x, start_y) = node.point;
+                    node.point = (
+                        (start_x + offset_x).clamp(50.0, 800.0 - 50.0),
+                        (start_y + offset_y).clamp(50.0, 600.0 - 50.0),
+                    );
+                }
+
+                self.needs_redraw = true;
+            }
+
+            AppMsg::EndDrag => {
+                self.dragged_node = None;
+
+                self.needs_redraw = true;
+            }
+        }
+    }
+
     fn init(
         network: Self::Init,
         root: Self::Root,
-        _sender: ComponentSender<Self>,
+        sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         let drawing_area = gtk::DrawingArea::builder()
             .hexpand(true)
@@ -64,13 +118,13 @@ impl SimpleComponent for AppModel {
                 let mid_y = (src_node.point.1 + dest_node.point.1) / 2.0;
 
                 // Offset control point based on link_id to alternate curve direction
-                let offset = if link.link_id.as_bytes()[0] as u8 % 2 == 0 {
+                let offset = if link.link_id.as_bytes()[0] % 2 == 0 {
                     30.0
                 } else {
                     -30.0
                 };
                 let control_x = mid_x;
-                let control_y = mid_y;
+                let control_y = mid_y + offset;
 
                 cr.move_to(src_node.point.0, src_node.point.1);
                 cr.curve_to(
@@ -123,13 +177,65 @@ impl SimpleComponent for AppModel {
             }
         });
 
+        let click_controller = gtk::GestureClick::new();
+        click_controller.set_button(1);
+
+        click_controller.connect_pressed({
+            let sender = sender.clone();
+            let network = network.clone();
+            move |_, _npress, x, y| {
+                if network.find_node_at_point(x, y, 20.0).is_none() {
+                    sender.input(AppMsg::AddPoint((x, y)));
+                }
+            }
+        });
+
+        drawing_area.add_controller(click_controller);
+
+        // drawing_area.add_controller(&click_controller);
+
+        // let drag_controller = gtk::GestureDrag::new();
+        // drag_controller.set_button(1);
+        //
+        // drag_controller.connect_drag_begin({
+        //     let sender = sender.clone();
+        //     let network = network.clone();
+        //     move |gesture, x, y| {
+        //         if let Some(node_idx) = network.find_node_at_point(x, y, 20.0) {
+        //             sender.input(AppMsg::StartDrag(node_idx, x, y));
+        //             gesture.set_state(gtk::EventSequenceState::Claimed);
+        //         }
+        //     }
+        // });
+        //
+        // drag_controller.connect_drag_update({
+        //     let sender = sender.clone();
+        //     move |_, offset_x, offset_y| {
+        //         sender.input(AppMsg::UpdateDrag(offset_x, offset_y));
+        //     }
+        // });
+        //
+        // drag_controller.connect_drag_end({
+        //     let sender = sender.clone();
+        //     move |_, _, _| {
+        //         sender.input(AppMsg::EndDrag);
+        //     }
+        // });
+        //
+        // drawing_area.add_controller(drag_controller);
+        //
         let vbox = gtk::Box::builder().spacing(5).build();
+
         root.set_child(Some(&vbox));
         vbox.append(&drawing_area);
 
         let widgets = AppWidgets { drawing_area };
 
-        let model = AppModel { network };
+        let model = AppModel {
+            network,
+            dragged_node: None,
+            needs_redraw: false,
+        };
 
         ComponentParts { model, widgets }
     }
@@ -169,7 +275,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         network.add_link(link).expect("Failed to add link");
     }
 
-    network.apply_force_directed_layout(800.0, 600.0, 50);
+    network.apply_force_directed_layout(800.0, 600.0, 50, None);
 
     let app = RelmApp::new("com.test.net_modeler");
     app.run::<AppModel>(network);
