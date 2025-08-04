@@ -1,12 +1,8 @@
-mod app;
 mod components;
-use crate::components::network::{Network, Node, load_network_links};
-use fltk::app as fltkapp;
-use fltk::prelude::WidgetExt;
-use fltk::{prelude::*, window::Window};
-use petgraph::graph::NodeIndex;
-use relm4::gtk;
+use crate::{app::AppModel, components::network::Network};
+use raylib::{color::Color, prelude::RaylibDraw};
 use std::error::Error;
+mod app;
 
 // impl SimpleComponent for AppModel {
 //     type Input = AppMsg;
@@ -218,44 +214,11 @@ use std::error::Error;
 // }
 //
 fn main() -> Result<(), Box<dyn Error>> {
-    let network_links = load_network_links()?;
-    let mut network = Network::new();
+    let mut network_modeler = AppModel::init("Net Modeler");
 
-    for link in &network_links {
-        if !network.node_indices.contains_key(&link.source_node) {
-            let source_node = Node {
-                id: link.source_node.clone(),
-                point: (
-                    rand::random_range(50.0..750.0),
-                    rand::random_range(50.0..550.0),
-                ),
-            };
-
-            network.add_node(source_node);
-        }
-
-        if !network.node_indices.contains_key(&link.destination_node) {
-            let destination_node = Node {
-                id: link.destination_node.clone(),
-                point: (
-                    rand::random_range(50.0..750.0),
-                    rand::random_range(50.0..550.0),
-                ),
-            };
-
-            network.add_node(destination_node);
-        }
+    while !network_modeler.rl.window_should_close() {
+        network_modeler.init_network_canvas();
     }
-
-    for link in network_links {
-        network.add_link(link).expect("Failed to add link");
-    }
-
-    let app = fltkapp::App::default().with_scheme(fltkapp::Scheme::Gleam);
-    let mut wind = Window::new(100, 100, 400, 300, "Net Modeler");
-    wind.end();
-    wind.show();
-    app.run().unwrap();
 
     Ok(())
 }

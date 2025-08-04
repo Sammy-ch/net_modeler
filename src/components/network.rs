@@ -48,7 +48,7 @@ impl From<csv::Error> for NetworkError {
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct Node {
     pub id: String,
-    pub point: (f64, f64),
+    pub point: (i32, i32),
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -76,14 +76,15 @@ impl Network {
 
     pub fn find_node_at_point(&self, x: f64, y: f64, radius: f64) -> Option<NodeIndex> {
         for (i, node) in self.nodes().enumerate() {
-            let dx = x - node.point.0;
-            let dy = y - node.point.1;
+            let dx = x - node.point.0 as f64;
+            let dy = y - node.point.1 as f64;
             if (dx * dx + dy * dy).sqrt() <= radius {
                 return Some(NodeIndex::new(i));
             }
         }
         None
     }
+
     pub fn add_node(&mut self, node: Node) -> NodeIndex {
         if let Some(&index) = self.node_indices.get(&node.id) {
             index
@@ -121,16 +122,17 @@ impl Network {
             (edge_ref.weight().clone(), source_node, dest_node)
         })
     }
+
     pub fn apply_force_directed_layout(
         &mut self,
-        width: f64,
-        height: f64,
+        width: i32,
+        height: i32,
         iterations: usize,
         pinned_node: Option<NodeIndex>,
     ) -> f64 {
-        let k = (width * height / self.graph.node_count().max(1) as f64).sqrt() * 1.5;
+        let k = ((width * height) as f64 / self.graph.node_count().max(1) as f64).sqrt() * 1.5;
         let cooling_factor = 0.9;
-        let mut temp = width / 5.0;
+        let mut temp = (width as f64) / 5.0;
         let mut max_displacement: f64 = 0.0;
 
         let mut displacements: Vec<(f64, f64)> = vec![(0.0, 0.0); self.graph.node_count()];
@@ -146,8 +148,8 @@ impl Network {
                 for j in i + 1..self.graph.node_count() {
                     let node_i = self.graph.node_weight(NodeIndex::new(i)).unwrap();
                     let node_j = self.graph.node_weight(NodeIndex::new(j)).unwrap();
-                    let dx = node_j.point.0 - node_i.point.0;
-                    let dy = node_j.point.1 - node_i.point.1;
+                    let dx = (node_j.point.0 - node_i.point.0) as f64;
+                    let dy = (node_j.point.1 - node_i.point.1) as f64;
                     let dist = (dx * dx + dy * dy).sqrt().max(1e-2);
                     let force = k * k / dist;
                     let fx = force * dx / dist;
@@ -167,8 +169,8 @@ impl Network {
                 }
                 let src_node = self.graph.node_weight(src_idx).unwrap();
                 let dest_node = self.graph.node_weight(dest_idx).unwrap();
-                let dx = dest_node.point.0 - src_node.point.0;
-                let dy = dest_node.point.1 - src_node.point.1;
+                let dx = (dest_node.point.0 - src_node.point.0) as f64;
+                let dy = (dest_node.point.1 - src_node.point.1) as f64;
                 let dist = (dx * dx + dy * dy).sqrt().max(1e-2);
                 let force = dist * dist / k;
                 let fx = force * dx / dist;
@@ -190,11 +192,11 @@ impl Network {
                 max_displacement = max_displacement.max(disp_len);
                 let factor = temp / disp_len;
                 let node = self.graph.node_weight_mut(NodeIndex::new(i)).unwrap();
-                node.point.0 += disp.0 * factor;
-                node.point.1 += disp.1 * factor;
+                node.point.0 += (disp.0 * factor) as i32;
+                node.point.1 += (disp.1 * factor) as i32;
 
-                node.point.0 = node.point.0.clamp(50.0, width - 50.0);
-                node.point.1 = node.point.1.clamp(50.0, height - 50.0);
+                node.point.0 = node.point.0.clamp(50, width - 50);
+                node.point.1 = node.point.1.clamp(50, height - 50);
             }
 
             temp *= cooling_factor;
@@ -245,12 +247,11 @@ mod test {
         for link in &network_links {
             network.add_node(Node {
                 id: link.source_node.clone(),
-                point: (0.0, 0.0),
+                point: (0, 0),
             });
             network.add_node(Node {
                 id: link.destination_node.clone(),
-
-                point: (0.0, 0.0),
+                point: (0, 0),
             });
         }
 
@@ -287,11 +288,11 @@ mod test {
         let mut network = Network::new();
         let node1 = Node {
             id: "A".to_string(),
-            point: (0.0, 0.0),
+            point: (0, 0),
         };
         let node2 = Node {
             id: "B".to_string(),
-            point: (0.0, 0.0),
+            point: (0, 0),
         };
 
         let idx_a1 = network.add_node(node1.clone());
@@ -309,7 +310,7 @@ mod test {
         let mut network = Network::new();
         let node_a = Node {
             id: "A".to_string(),
-            point: (0.0, 0.0),
+            point: (0, 0),
         };
         network.add_node(node_a);
 
