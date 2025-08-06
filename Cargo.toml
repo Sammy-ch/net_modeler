@@ -11,3 +11,4 @@ rand = "0.9.1"
 log = "0.4.27"
 fltk = "^1.5"
 raylib = { version = "5.5.1", features = ["imgui"] }
+imgui = "0.12.0"

@@ -24,9 +24,9 @@ pub enum AppMsg {
 
 impl AppModel {
     pub fn init(title: impl AsRef<str>) -> AppModel {
-        let network_links = load_network_links().unwrap();
         let mut network = Network::new();
 
+        let network_links = load_network_links().unwrap();
         for link in &network_links {
             if !network.node_indices.contains_key(&link.source_node) {
                 let source_node = Node {
@@ -131,61 +131,77 @@ impl AppModel {
     }
 
     pub fn init_network_canvas(&mut self) {
-        let mut d = self.rl.begin_drawing(&self.rthread);
-        d.clear_background(Color::BLACK);
+        self.rl.draw(&self.rthread, |mut rhandle| {
+            rhandle.clear_background(Color::BLACK);
 
-        // Draw links
-        for (link, src_node, dest_node) in self.network.links() {
-            let start_pos = Vector2 {
-                x: src_node.point.0 as f32,
-                y: src_node.point.1 as f32,
-            };
-            let end_pos = Vector2 {
-                x: dest_node.point.0 as f32,
-                y: dest_node.point.1 as f32,
-            };
+            for (link, src_node, dest_node) in self.network.links() {
+                let start_pos = Vector2 {
+                    x: src_node.point.0 as f32,
+                    y: src_node.point.1 as f32,
+                };
+                let end_pos = Vector2 {
+                    x: dest_node.point.0 as f32,
+                    y: dest_node.point.1 as f32,
+                };
 
-            let mid_x = (src_node.point.0 + dest_node.point.0) / 2;
-            let mid_y = (src_node.point.1 + dest_node.point.1) / 2;
+                let mid_x = (src_node.point.0 + dest_node.point.0) / 2;
+                let mid_y = (src_node.point.1 + dest_node.point.1) / 2;
 
-            let offset = if link.link_id.as_bytes()[0] % 2 == 0 {
-                30.0
-            } else {
-                -30.0
-            };
+                let offset = if link.link_id.as_bytes()[0] % 2 == 0 {
+                    30.0
+                } else {
+                    -30.0
+                };
 
-            d.draw_line_bezier(start_pos, end_pos, 2.0, Color::WHEAT);
+                rhandle.draw_line_bezier(start_pos, end_pos, 2.0, Color::WHEAT);
 
-            let capacity_text = link.capacity.to_string();
-            let font_size = 18;
-            let text_width = d.measure_text(capacity_text.as_str(), font_size);
-            let text_height = font_size;
+                let capacity_text = link.capacity.to_string();
+                let font_size = 18;
+                let text_width = rhandle.measure_text(capacity_text.as_str(), font_size);
+                let text_height = font_size;
 
-            let text_x = mid_x - text_width / 2;
-            let text_y = (mid_y as f32 + offset - text_height as f32 / 2.0) as i32;
+                let text_x = mid_x - text_width / 2;
+                let text_y = (mid_y as f32 + offset - text_height as f32 / 2.0) as i32;
 
-            d.draw_text(
-                capacity_text.as_str(),
-                text_x,
-                text_y,
-                font_size,
-                Color::RAYWHITE,
-            );
-        }
+                rhandle.draw_text(
+                    capacity_text.as_str(),
+                    text_x,
+                    text_y,
+                    font_size,
+                    Color::RAYWHITE,
+                );
+            }
 
-        // Draw nodes
-        for node in self.network.nodes() {
-            d.draw_circle(node.point.0, node.point.1, 18.0, Color::WHEAT);
+            // Draw nodes
+            for node in self.network.nodes() {
+                rhandle.draw_circle(node.point.0, node.point.1, 18.0, Color::WHEAT);
 
-            let text = node.id.as_str();
-            let font_size = 12;
-            let text_width = d.measure_text(text, font_size);
-            let text_height = font_size;
+                let text = node.id.as_str();
+                let font_size = 12;
+                let text_width = rhandle.measure_text(text, font_size);
+                let text_height = font_size;
 
-            let text_x = node.point.0 - text_width / 2;
-            let text_y = node.point.1 - text_height / 2;
+                let text_x = node.point.0 - text_width / 2;
+                let text_y = node.point.1 - text_height / 2;
 
-            d.draw_text(text, text_x, text_y, font_size, Color::BLACK);
-        }
+                rhandle.draw_text(text, text_x, text_y, font_size, Color::BLACK);
+            }
+
+            rhandle.draw_imgui(|ui| {
+                ui.window("Net Modeler")
+                    .size([300.0, 100.0], ::imgui::Condition::Always)
+                    .position([0.0, 0.0], ::imgui::Condition::Always)
+                    .movable(false)
+                    .resizable(false)
+                    .collapsible(false)
+                    .build(|| {
+                        if ui.button("Add Node") {
+                            let x = rand::random_range(50..750) as f64;
+                            let y = rand::random_range(50..750) as f64;
+                            // self.update(AppMsg::AddPoint((x, y)))
+                        }
+                    });
+            });
+        });
     }
 }
