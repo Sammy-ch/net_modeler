@@ -2,7 +2,10 @@ use std::collections::VecDeque;
 
 use crate::{
     Network,
-    components::network::{Node, load_network_links},
+    components::{
+        network::{Node, load_network_links},
+        ui::init_ui,
+    },
 };
 use petgraph::graph::NodeIndex;
 use raylib::prelude::*;
@@ -130,7 +133,7 @@ impl AppModel {
         }
     }
 
-    pub fn init_network_canvas(&mut self) {
+    pub fn init_network_canvas(&mut self, message_queue: &mut VecDeque<AppMsg>) {
         self.rl.draw(&self.rthread, |mut rhandle| {
             rhandle.clear_background(Color::BLACK);
 
@@ -187,21 +190,8 @@ impl AppModel {
                 rhandle.draw_text(text, text_x, text_y, font_size, Color::BLACK);
             }
 
-            rhandle.draw_imgui(|ui| {
-                ui.window("Net Modeler")
-                    .size([300.0, 100.0], ::imgui::Condition::Always)
-                    .position([0.0, 0.0], ::imgui::Condition::Always)
-                    .movable(false)
-                    .resizable(false)
-                    .collapsible(false)
-                    .build(|| {
-                        if ui.button("Add Node") {
-                            let x = rand::random_range(50..750) as f64;
-                            let y = rand::random_range(50..750) as f64;
-                            // self.update(AppMsg::AddPoint((x, y)))
-                        }
-                    });
-            });
+            // Draw imgui ui
+            init_ui(&rhandle, message_queue);
         });
     }
 }

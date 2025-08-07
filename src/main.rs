@@ -15,6 +15,6 @@ fn main() {
             model.update(msg);
         }
 
-        model.init_network_canvas();
+        model.init_network_canvas(&mut message_queue);
     }
 }
