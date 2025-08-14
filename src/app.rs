@@ -65,7 +65,7 @@ impl AppModel {
         let width = rl.get_screen_width();
         let height = rl.get_screen_height();
 
-        network.apply_force_directed_layout(width, height, 100, None);
+        // network.apply_force_directed_layout(width, height, 100, None);
 
         AppModel {
             network,
@@ -161,7 +161,7 @@ impl AppModel {
                 self.canvas_offset_x,
                 0,
                 canvas_width,
-                canvas_width,
+                canvas_height,
                 |mut handle| {
                     for (link, src_node, dest_node) in self.network.links() {
                         let start_pos = Vector2 {
@@ -169,7 +169,7 @@ impl AppModel {
                             y: src_node.point.1 as f32,
                         };
                         let end_pos = Vector2 {
-                            x: src_node.point.0 as f32 + self.canvas_offset_x as f32,
+                            x: dest_node.point.0 as f32 + self.canvas_offset_x as f32,
                             y: dest_node.point.1 as f32,
                         };
 
