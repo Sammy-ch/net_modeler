@@ -15,6 +15,7 @@ pub struct AppModel {
     pub rl: RaylibHandle,
     pub rthread: RaylibThread,
     dragged_node: Option<(NodeIndex, f64, f64)>,
+    canvas_offset_x: i32,
 }
 
 #[derive(Debug)]
@@ -30,11 +31,15 @@ impl AppModel {
         let mut network = Network::new();
 
         let network_links = load_network_links().unwrap();
+        let canvas_offset_x = 200;
         for link in &network_links {
             if !network.node_indices.contains_key(&link.source_node) {
                 let source_node = Node {
                     id: link.source_node.clone(),
-                    point: (rand::random_range(50..750), rand::random_range(50..550)),
+                    point: (
+                        rand::random_range(50..(750 - canvas_offset_x)),
+                        rand::random_range(50..550),
+                    ),
                 };
                 network.add_node(source_node);
             }
@@ -42,7 +47,10 @@ impl AppModel {
             if !network.node_indices.contains_key(&link.destination_node) {
                 let destination_node = Node {
                     id: link.destination_node.clone(),
-                    point: (rand::random_range(50..750), rand::random_range(50..550)),
+                    point: (
+                        rand::random_range(50..(750 - canvas_offset_x)),
+                        rand::random_range(50..550),
+                    ),
                 };
                 network.add_node(destination_node);
             }
@@ -64,6 +72,7 @@ impl AppModel {
             rl,
             rthread,
             dragged_node: None,
+            canvas_offset_x,
         }
     }
 
@@ -73,23 +82,31 @@ impl AppModel {
             .rl
             .is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT)
         {
-            if let Some(node_idx) =
-                self.network
-                    .find_node_at_point(mouse_pos.x as f64, mouse_pos.y as f64, 18.0)
-            {
+            if let Some(node_idx) = self.network.find_node_at_point(
+                mouse_pos.x as f64 - self.canvas_offset_x as f64,
+                mouse_pos.y as f64,
+                18.0,
+            ) {
                 // Calculate offset from node center to mouse click
                 let node = self.network.graph.node_weight(node_idx).unwrap();
-                let offset_x = mouse_pos.x as f64 - node.point.0 as f64;
+                let offset_x =
+                    mouse_pos.x as f64 - node.point.0 as f64 - self.canvas_offset_x as f64;
                 let offset_y = mouse_pos.y as f64 - node.point.1 as f64;
                 message_queue.push_back(AppMsg::StartDrag(node_idx, offset_x, offset_y));
             } else {
-                message_queue.push_back(AppMsg::AddPoint((mouse_pos.x as f64, mouse_pos.y as f64)));
+                message_queue.push_back(AppMsg::AddPoint((
+                    mouse_pos.x as f64 - self.canvas_offset_x as f64,
+                    mouse_pos.y as f64,
+                )));
             }
         }
 
         if self.rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) {
             if self.dragged_node.is_some() {
-                message_queue.push_back(AppMsg::UpdateDrag(mouse_pos.x as f64, mouse_pos.y as f64));
+                message_queue.push_back(AppMsg::UpdateDrag(
+                    mouse_pos.x as f64 - self.canvas_offset_x as f64,
+                    mouse_pos.y as f64,
+                ));
             }
         }
 
@@ -137,61 +154,78 @@ impl AppModel {
         self.rl.draw(&self.rthread, |mut rhandle| {
             rhandle.clear_background(Color::BLACK);
 
-            for (link, src_node, dest_node) in self.network.links() {
-                let start_pos = Vector2 {
-                    x: src_node.point.0 as f32,
-                    y: src_node.point.1 as f32,
-                };
-                let end_pos = Vector2 {
-                    x: dest_node.point.0 as f32,
-                    y: dest_node.point.1 as f32,
-                };
+            let canvas_width = rhandle.get_screen_width() - self.canvas_offset_x;
+            let canvas_height = rhandle.get_screen_height();
 
-                let mid_x = (src_node.point.0 + dest_node.point.0) / 2;
-                let mid_y = (src_node.point.1 + dest_node.point.1) / 2;
+            rhandle.draw_scissor_mode(
+                self.canvas_offset_x,
+                0,
+                canvas_width,
+                canvas_width,
+                |mut handle| {
+                    for (link, src_node, dest_node) in self.network.links() {
+                        let start_pos = Vector2 {
+                            x: src_node.point.0 as f32 + self.canvas_offset_x as f32,
+                            y: src_node.point.1 as f32,
+                        };
+                        let end_pos = Vector2 {
+                            x: src_node.point.0 as f32 + self.canvas_offset_x as f32,
+                            y: dest_node.point.1 as f32,
+                        };
 
-                let offset = if link.link_id.as_bytes()[0] % 2 == 0 {
-                    30.0
-                } else {
-                    -30.0
-                };
+                        let mid_x =
+                            (src_node.point.0 + dest_node.point.0) / 2 + self.canvas_offset_x;
+                        let mid_y = (src_node.point.1 + dest_node.point.1) / 2;
 
-                rhandle.draw_line_bezier(start_pos, end_pos, 2.0, Color::WHEAT);
+                        let offset = if link.link_id.as_bytes()[0] % 2 == 0 {
+                            30.0
+                        } else {
+                            -30.0
+                        };
 
-                let capacity_text = link.capacity.to_string();
-                let font_size = 18;
-                let text_width = rhandle.measure_text(capacity_text.as_str(), font_size);
-                let text_height = font_size;
+                        handle.draw_line_bezier(start_pos, end_pos, 2.0, Color::WHEAT);
 
-                let text_x = mid_x - text_width / 2;
-                let text_y = (mid_y as f32 + offset - text_height as f32 / 2.0) as i32;
+                        let capacity_text = link.capacity.to_string();
+                        let font_size = 18;
+                        let text_width = handle.measure_text(capacity_text.as_str(), font_size);
+                        let text_height = font_size;
 
-                rhandle.draw_text(
-                    capacity_text.as_str(),
-                    text_x,
-                    text_y,
-                    font_size,
-                    Color::RAYWHITE,
-                );
-            }
+                        let text_x = mid_x - text_width / 2;
+                        let text_y = (mid_y as f32 + offset - text_height as f32 / 2.0) as i32;
 
-            // Draw nodes
-            for node in self.network.nodes() {
-                rhandle.draw_circle(node.point.0, node.point.1, 18.0, Color::WHEAT);
+                        handle.draw_text(
+                            capacity_text.as_str(),
+                            text_x,
+                            text_y,
+                            font_size,
+                            Color::RAYWHITE,
+                        );
+                    }
 
-                let text = node.id.as_str();
-                let font_size = 12;
-                let text_width = rhandle.measure_text(text, font_size);
-                let text_height = font_size;
+                    // Draw nodes
+                    for node in self.network.nodes() {
+                        handle.draw_circle(
+                            node.point.0 + self.canvas_offset_x,
+                            node.point.1,
+                            18.0,
+                            Color::WHITE,
+                        );
 
-                let text_x = node.point.0 - text_width / 2;
-                let text_y = node.point.1 - text_height / 2;
+                        let text = node.id.as_str();
+                        let font_size = 12;
+                        let text_width = handle.measure_text(text, font_size);
+                        let text_height = font_size;
 
-                rhandle.draw_text(text, text_x, text_y, font_size, Color::BLACK);
-            }
+                        let text_x = node.point.0 + self.canvas_offset_x - text_width / 2;
+                        let text_y = node.point.1 - text_height / 2;
 
-            // Draw imgui ui
-            init_ui(&rhandle, message_queue);
+                        handle.draw_text(text, text_x, text_y, font_size, Color::BLACK);
+                    }
+
+                    // Draw imgui ui
+                    init_ui(&handle, message_queue);
+                },
+            );
         });
     }
 }
