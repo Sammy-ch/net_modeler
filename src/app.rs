@@ -30,8 +30,8 @@ impl AppModel {
     pub fn init(title: impl AsRef<str>) -> AppModel {
         let mut network = Network::new();
 
-        let network_links = load_network_links().unwrap();
-        let canvas_offset_x = 200;
+        let network_links = load_network_links("configuration/network.csv").unwrap();
+        let canvas_offset_x = 250;
         for link in &network_links {
             if !network.node_indices.contains_key(&link.source_node) {
                 let source_node = Node {
@@ -65,7 +65,7 @@ impl AppModel {
         let width = rl.get_screen_width();
         let height = rl.get_screen_height();
 
-        // network.apply_force_directed_layout(width, height, 100, None);
+        network.apply_force_directed_layout(width, height, 100, None);
 
         AppModel {
             network,
@@ -93,30 +93,24 @@ impl AppModel {
                     mouse_pos.x as f64 - node.point.0 as f64 - self.canvas_offset_x as f64;
                 let offset_y = mouse_pos.y as f64 - node.point.1 as f64;
                 message_queue.push_back(AppMsg::StartDrag(node_idx, offset_x, offset_y));
-            } else {
-                message_queue.push_back(AppMsg::AddPoint((
-                    mouse_pos.x as f64 - self.canvas_offset_x as f64,
-                    mouse_pos.y as f64,
-                )));
             }
         }
-
-        if self.rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) {
-            if self.dragged_node.is_some() {
+        match (
+            self.rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT),
+            self.rl
+                .is_mouse_button_released(MouseButton::MOUSE_BUTTON_LEFT),
+            self.dragged_node.is_some(),
+        ) {
+            (true, _, true) => {
                 message_queue.push_back(AppMsg::UpdateDrag(
                     mouse_pos.x as f64 - self.canvas_offset_x as f64,
                     mouse_pos.y as f64,
                 ));
             }
-        }
-
-        if self
-            .rl
-            .is_mouse_button_released(MouseButton::MOUSE_BUTTON_LEFT)
-        {
-            if self.dragged_node.is_some() {
+            (_, true, true) => {
                 message_queue.push_back(AppMsg::EndDrag);
             }
+            _ => {}
         }
     }
 
@@ -185,16 +179,16 @@ impl AppModel {
 
                         handle.draw_line_bezier(start_pos, end_pos, 2.0, Color::WHEAT);
 
-                        let capacity_text = link.capacity.to_string();
+                        let weight_text = link.weight.to_string();
                         let font_size = 18;
-                        let text_width = handle.measure_text(capacity_text.as_str(), font_size);
+                        let text_width = handle.measure_text(weight_text.as_str(), font_size);
                         let text_height = font_size;
 
                         let text_x = mid_x - text_width / 2;
                         let text_y = (mid_y as f32 + offset - text_height as f32 / 2.0) as i32;
 
                         handle.draw_text(
-                            capacity_text.as_str(),
+                            weight_text.as_str(),
                             text_x,
                             text_y,
                             font_size,
@@ -223,7 +217,7 @@ impl AppModel {
                     }
 
                     // Draw imgui ui
-                    init_ui(&handle, message_queue);
+                    init_ui(&handle, message_queue, &self.network);
                 },
             );
         });

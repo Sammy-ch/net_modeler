@@ -1,4 +1,5 @@
 use petgraph::{
+    algo::dijkstra,
     graph::{NodeIndex, UnGraph},
     visit::EdgeRef,
 };
@@ -93,6 +94,15 @@ impl Network {
             self.node_indices.insert(node.id, index);
             index
         }
+    }
+
+    pub fn find_shortest_path(&self, start_node_id: &str, end_node_id: &str) {
+        let start_idx = self.node_indices.get(start_node_id).unwrap();
+        let end_idx = self.node_indices.get(end_node_id).unwrap();
+
+        let distances = dijkstra(&self.graph, *start_idx, Some(*end_idx), |edge| {
+            edge.weight().weight as u32
+        });
     }
 
     pub fn add_link(&mut self, link: Link) -> Result<(), NetworkError> {
@@ -205,8 +215,8 @@ impl Network {
     }
 }
 
-pub fn load_network_links() -> Result<Vec<Link>, NetworkError> {
-    let mut rdr = csv::Reader::from_path("configuration/network.csv")?;
+pub fn load_network_links(csv_path: &str) -> Result<Vec<Link>, NetworkError> {
+    let mut rdr = csv::Reader::from_path(csv_path)?;
     let mut network_links: Vec<Link> = Vec::new();
 
     for network in rdr.deserialize() {
@@ -303,6 +313,58 @@ mod test {
         assert_eq!(network.node_indices.len(), 2);
         assert_eq!(idx_a1, idx_a2); // Should return the same index for the same node ID
         assert_ne!(idx_a1, idx_b);
+    }
+
+    #[test]
+    fn test_find_shortest_path() {
+        let mut network = Network::new();
+
+        // Manually add nodes
+        let node_a = Node {
+            id: "A".to_string(),
+            point: (0, 0),
+        };
+        let node_b = Node {
+            id: "B".to_string(),
+            point: (50, 0),
+        };
+        let node_c = Node {
+            id: "C".to_string(),
+            point: (100, 0),
+        };
+
+        let idx_a = network.add_node(node_a);
+        let idx_b = network.add_node(node_b);
+        let idx_c = network.add_node(node_c);
+
+        // Add links with weights
+        let link_ab = Link {
+            link_id: "link_ab".to_string(),
+            source_node: "A".to_string(),
+            destination_node: "B".to_string(),
+            capacity: 100,
+            weight: 4, // A to B: weight 4
+        };
+        let link_bc = Link {
+            link_id: "link_bc".to_string(),
+            source_node: "B".to_string(),
+            destination_node: "C".to_string(),
+            capacity: 50,
+            weight: 3, // B to C: weight 3
+        };
+        let link_ac = Link {
+            link_id: "link_ac".to_string(),
+            source_node: "A".to_string(),
+            destination_node: "C".to_string(),
+            capacity: 75,
+            weight: 7, // A to C direct: weight 7
+        };
+
+        network.add_link(link_ab).expect("Failed to add link_ab");
+        network.add_link(link_bc).expect("Failed to add link_bc");
+        network.add_link(link_ac).expect("Failed to add link_ac");
+
+        todo!("Add assertions for finding_shortest_path");
     }
 
     #[test]
