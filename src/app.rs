@@ -1,3 +1,4 @@
+use crate::components::ui::UiState;
 use std::collections::VecDeque;
 
 use crate::{
@@ -16,6 +17,7 @@ pub struct AppModel {
     pub rthread: RaylibThread,
     dragged_node: Option<(NodeIndex, f64, f64)>,
     canvas_offset_x: i32,
+    uistate: UiState,
 }
 
 #[derive(Debug)]
@@ -73,6 +75,7 @@ impl AppModel {
             rthread,
             dragged_node: None,
             canvas_offset_x,
+            uistate: UiState::default(),
         }
     }
 
@@ -216,8 +219,8 @@ impl AppModel {
                         handle.draw_text(text, text_x, text_y, font_size, Color::BLACK);
                     }
 
-                    // Draw imgui ui
-                    init_ui(&handle, message_queue, &self.network);
+                    // init imgui
+                    init_ui(&handle, message_queue, &self.network, &mut self.uistate);
                 },
             );
         });
