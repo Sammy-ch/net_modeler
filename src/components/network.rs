@@ -1,11 +1,15 @@
 use petgraph::{
-    algo::dijkstra,
     graph::{NodeIndex, UnGraph},
     visit::EdgeRef,
 };
 
 use serde::Deserialize;
-use std::{collections::HashMap, error::Error, fmt::Display};
+use std::{
+    cmp::Reverse,
+    collections::{BinaryHeap, HashMap},
+    error::Error,
+    fmt::Display,
+};
 
 #[derive(Debug)]
 pub enum NetworkError {
@@ -95,14 +99,67 @@ impl Network {
             index
         }
     }
+    pub fn find_shortest_path(
+        &self,
+        start_node_id: &str,
+        end_node_id: &str,
+    ) -> Result<Vec<(NodeIndex, NodeIndex)>, NetworkError> {
+        let start_idx = self
+            .node_indices
+            .get(start_node_id)
+            .ok_or_else(|| NetworkError::NodeNotFound(start_node_id.to_string()))?;
+        let end_idx = self
+            .node_indices
+            .get(end_node_id)
+            .ok_or_else(|| NetworkError::NodeNotFound(end_node_id.to_string()))?;
 
-    pub fn find_shortest_path(&self, start_node_id: &str, end_node_id: &str) {
-        let start_idx = self.node_indices.get(start_node_id).unwrap();
-        let end_idx = self.node_indices.get(end_node_id).unwrap();
+        // Initialize data structures
+        let mut distances: HashMap<NodeIndex, u32> = HashMap::new();
+        let mut predecessors: HashMap<NodeIndex, Option<NodeIndex>> = HashMap::new();
+        let mut heap = BinaryHeap::new();
 
-        let distances = dijkstra(&self.graph, *start_idx, Some(*end_idx), |edge| {
-            edge.weight().weight as u32
-        });
+        // Initialize distances and predecessors
+        for node in self.graph.node_indices() {
+            distances.insert(node, u32::MAX);
+            predecessors.insert(node, None);
+        }
+        distances.insert(*start_idx, 0);
+        heap.push(Reverse((0, *start_idx)));
+
+        // Dijkstra's algorithm
+        while let Some(Reverse((dist, current))) = heap.pop() {
+            if dist > distances[&current] {
+                continue; // Skip if we've found a better path
+            }
+
+            for edge in self.graph.edges(current) {
+                let next = edge.target();
+                let weight = edge.weight().weight as u32;
+                let new_dist = dist.saturating_add(weight);
+
+                if new_dist < distances[&next] {
+                    distances.insert(next, new_dist);
+                    predecessors.insert(next, Some(current));
+                    heap.push(Reverse((new_dist, next)));
+                }
+            }
+        }
+
+        // Reconstruct the path
+        let mut path_edges = Vec::new();
+        let mut current_idx = *end_idx;
+        while let Some(prev_idx) = predecessors.get(&current_idx).copied().flatten() {
+            if current_idx == *start_idx {
+                break;
+            }
+            path_edges.push((prev_idx, current_idx));
+            current_idx = prev_idx;
+        }
+        if current_idx != *start_idx {
+            return Err(NetworkError::NodeNotFound("No path exists".to_string()));
+        }
+        path_edges.reverse(); // Get start-to-end order
+        Ok(path_edges)
     }
 
     pub fn add_link(&mut self, link: Link) -> Result<(), NetworkError> {
@@ -131,87 +188,6 @@ impl Network {
             let dest_node = self.graph.node_weight(dest_idx).unwrap();
             (edge_ref.weight().clone(), source_node, dest_node)
         })
-    }
-
-    pub fn apply_force_directed_layout(
-        &mut self,
-        width: i32,
-        height: i32,
-        iterations: usize,
-        pinned_node: Option<NodeIndex>,
-    ) -> f64 {
-        let k = ((width * height) as f64 / self.graph.node_count().max(1) as f64).sqrt() * 1.5;
-        let cooling_factor = 0.9;
-        let mut temp = (width as f64) / 5.0;
-        let mut max_displacement: f64 = 0.0;
-
-        let mut displacements: Vec<(f64, f64)> = vec![(0.0, 0.0); self.graph.node_count()];
-
-        for _ in 0..iterations {
-            displacements.iter_mut().for_each(|d| *d = (0.0, 0.0));
-
-            // Repulsive forces
-            for i in 0..self.graph.node_count() {
-                if pinned_node == Some(NodeIndex::new(i)) {
-                    continue; // Skip pinned node
-                }
-                for j in i + 1..self.graph.node_count() {
-                    let node_i = self.graph.node_weight(NodeIndex::new(i)).unwrap();
-                    let node_j = self.graph.node_weight(NodeIndex::new(j)).unwrap();
-                    let dx = (node_j.point.0 - node_i.point.0) as f64;
-                    let dy = (node_j.point.1 - node_i.point.1) as f64;
-                    let dist = (dx * dx + dy * dy).sqrt().max(1e-2);
-                    let force = k * k / dist;
-                    let fx = force * dx / dist;
-                    let fy = force * dy / dist;
-                    displacements[i].0 -= fx;
-                    displacements[i].1 -= fy;
-                    displacements[j].0 += fx;
-                    displacements[j].1 += fy;
-                }
-            }
-
-            // Attractive forces
-            for edge_ref in self.graph.edge_references() {
-                let (src_idx, dest_idx) = self.graph.edge_endpoints(edge_ref.id()).unwrap();
-                if pinned_node == Some(src_idx) || pinned_node == Some(dest_idx) {
-                    continue; // Skip edges involving pinned node
-                }
-                let src_node = self.graph.node_weight(src_idx).unwrap();
-                let dest_node = self.graph.node_weight(dest_idx).unwrap();
-                let dx = (dest_node.point.0 - src_node.point.0) as f64;
-                let dy = (dest_node.point.1 - src_node.point.1) as f64;
-                let dist = (dx * dx + dy * dy).sqrt().max(1e-2);
-                let force = dist * dist / k;
-                let fx = force * dx / dist;
-                let fy = force * dy / dist;
-                displacements[src_idx.index()].0 += fx;
-                displacements[src_idx.index()].1 += fy;
-                displacements[dest_idx.index()].0 -= fx;
-                displacements[dest_idx.index()].1 -= fy;
-            }
-
-            // Update positions
-            max_displacement = 0.0;
-            for i in 0..self.graph.node_count() {
-                if pinned_node == Some(NodeIndex::new(i)) {
-                    continue; // Skip pinned node
-                }
-                let disp = displacements[i];
-                let disp_len = (disp.0 * disp.0 + disp.1 * disp.1).sqrt().max(1e-2);
-                max_displacement = max_displacement.max(disp_len);
-                let factor = temp / disp_len;
-                let node = self.graph.node_weight_mut(NodeIndex::new(i)).unwrap();
-                node.point.0 += (disp.0 * factor) as i32;
-                node.point.1 += (disp.1 * factor) as i32;
-
-                node.point.0 = node.point.0.clamp(50, width - 50);
-                node.point.1 = node.point.1.clamp(50, height - 50);
-            }
-
-            temp *= cooling_factor;
-        }
-        max_displacement
     }
 }
 
@@ -316,58 +292,6 @@ mod test {
     }
 
     #[test]
-    fn test_find_shortest_path() {
-        let mut network = Network::new();
-
-        // Manually add nodes
-        let node_a = Node {
-            id: "A".to_string(),
-            point: (0, 0),
-        };
-        let node_b = Node {
-            id: "B".to_string(),
-            point: (50, 0),
-        };
-        let node_c = Node {
-            id: "C".to_string(),
-            point: (100, 0),
-        };
-
-        let idx_a = network.add_node(node_a);
-        let idx_b = network.add_node(node_b);
-        let idx_c = network.add_node(node_c);
-
-        // Add links with weights
-        let link_ab = Link {
-            link_id: "link_ab".to_string(),
-            source_node: "A".to_string(),
-            destination_node: "B".to_string(),
-            capacity: 100,
-            weight: 4, // A to B: weight 4
-        };
-        let link_bc = Link {
-            link_id: "link_bc".to_string(),
-            source_node: "B".to_string(),
-            destination_node: "C".to_string(),
-            capacity: 50,
-            weight: 3, // B to C: weight 3
-        };
-        let link_ac = Link {
-            link_id: "link_ac".to_string(),
-            source_node: "A".to_string(),
-            destination_node: "C".to_string(),
-            capacity: 75,
-            weight: 7, // A to C direct: weight 7
-        };
-
-        network.add_link(link_ab).expect("Failed to add link_ab");
-        network.add_link(link_bc).expect("Failed to add link_bc");
-        network.add_link(link_ac).expect("Failed to add link_ac");
-
-        todo!("Add assertions for finding_shortest_path");
-    }
-
-    #[test]
     fn test_link_addition_error_handling() {
         let mut network = Network::new();
         let node_a = Node {
@@ -390,5 +314,62 @@ mod test {
             NetworkError::NodeNotFound(id) => assert_eq!(id, "NonExistent"),
             _ => panic!("Expected NodeNotFound error"),
         }
+    }
+
+    #[test]
+    fn test_find_shortest_path() {
+        let mut network = Network::new();
+
+        let node_a = Node {
+            id: "A".to_string(),
+            point: (0, 0),
+        };
+        let node_b = Node {
+            id: "B".to_string(),
+            point: (50, 0),
+        };
+        let node_c = Node {
+            id: "C".to_string(),
+            point: (100, 0),
+        };
+
+        let idx_a = network.add_node(node_a);
+        let idx_b = network.add_node(node_b);
+        let idx_c = network.add_node(node_c);
+
+        let link_ab = Link {
+            link_id: "link_ab".to_string(),
+            source_node: "A".to_string(),
+            destination_node: "B".to_string(),
+            capacity: 100,
+            weight: 4,
+        };
+        let link_bc = Link {
+            link_id: "link_bc".to_string(),
+            source_node: "B".to_string(),
+            destination_node: "C".to_string(),
+            capacity: 50,
+            weight: 3,
+        };
+        let link_ac = Link {
+            link_id: "link_ac".to_string(),
+            source_node: "A".to_string(),
+            destination_node: "C".to_string(),
+            capacity: 75,
+            weight: 8,
+        };
+
+        network.add_link(link_ab).expect("Failed to add link_ab");
+        network.add_link(link_bc).expect("Failed to add link_bc");
+        network.add_link(link_ac).expect("Failed to add link_ac");
+
+        let path = network
+            .find_shortest_path("A", "C")
+            .expect("Failed to find path");
+        let expected_path = vec![(idx_a, idx_b), (idx_b, idx_c)]; // A -> B -> C (weight 4 + 3 = 7)
+        assert_eq!(path, expected_path);
+
+        let result = network.find_shortest_path("A", "D");
+        assert!(matches!(result, Err(NetworkError::NodeNotFound(_))));
     }
 }

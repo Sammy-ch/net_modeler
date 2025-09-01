@@ -33,7 +33,6 @@ pub fn init_ui(
                 let y = rand::random_range(50..750) as f64;
                 message_queue.push_back(AppMsg::AddPoint((x, y)));
             });
-            ui.separator();
 
             ui.separator();
             ui.text("Shortest path");
@@ -53,6 +52,12 @@ pub fn init_ui(
                 &node_ids,
                 |node| std::borrow::Cow::Borrowed(node.as_str()),
             );
+
+            if ui.button("Shortest Path") && !node_ids.is_empty() {
+                let start_id = node_ids[ui_state.selected_start_index].clone();
+                let end_id = node_ids[ui_state.selected_end_index].clone();
+                message_queue.push_back(AppMsg::ComputeShortestPath(start_id, end_id));
+            }
 
             win.end();
         }

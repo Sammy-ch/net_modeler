@@ -18,6 +18,7 @@ pub struct AppModel {
     dragged_node: Option<(NodeIndex, f64, f64)>,
     canvas_offset_x: i32,
     uistate: UiState,
+    highlighted_path: Option<Vec<(NodeIndex, NodeIndex)>>,
 }
 
 #[derive(Debug)]
@@ -25,6 +26,7 @@ pub enum AppMsg {
     AddPoint((f64, f64)),
     StartDrag(NodeIndex, f64, f64),
     UpdateDrag(f64, f64),
+    ComputeShortestPath(String, String),
     EndDrag,
 }
 
@@ -64,10 +66,6 @@ impl AppModel {
 
         let (rl, rthread) = raylib::init().size(800, 600).title(title.as_ref()).build();
 
-        let width = rl.get_screen_width();
-        let height = rl.get_screen_height();
-
-
         AppModel {
             network,
             rl,
@@ -75,6 +73,7 @@ impl AppModel {
             dragged_node: None,
             canvas_offset_x,
             uistate: UiState::default(),
+            highlighted_path: None,
         }
     }
 
@@ -146,6 +145,12 @@ impl AppModel {
             AppMsg::EndDrag => {
                 self.dragged_node = None;
             }
+            AppMsg::ComputeShortestPath(start_id, end_id) => {
+                match self.network.find_shortest_path(&start_id, &end_id) {
+                    Ok(path) => self.highlighted_path = Some(path),
+                    Err(_) => self.highlighted_path = None,
+                }
+            }
         }
     }
 
@@ -172,8 +177,24 @@ impl AppModel {
                             y: dest_node.point.1 as f32,
                         };
 
+                        let is_highlighted = self.highlighted_path.as_ref().map_or(false, |path| {
+                            let src_idx = self.network.node_indices[&src_node.id];
+                            let dest_idx = self.network.node_indices[&dest_node.id];
+                            path.contains(&(src_idx, dest_idx))
+                                || path.contains(&(dest_idx, src_idx))
+                        });
+
+                        let (line_color, line_thickness) = if is_highlighted {
+                            (Color::RED, 4.0)
+                        } else {
+                            (Color::WHEAT, 2.0)
+                        };
+
+                        handle.draw_line_bezier(start_pos, end_pos, line_thickness, line_color);
+
                         let mid_x =
                             (src_node.point.0 + dest_node.point.0) / 2 + self.canvas_offset_x;
+
                         let mid_y = (src_node.point.1 + dest_node.point.1) / 2;
 
                         let offset = if link.link_id.as_bytes()[0] % 2 == 0 {
