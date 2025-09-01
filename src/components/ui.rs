@@ -1,6 +1,5 @@
-use std::collections::VecDeque;
-
 use raylib::{imgui::RayImGUITrait, prelude::RaylibDrawHandle};
+use std::collections::VecDeque;
 
 use crate::{app::AppMsg, components::network::Network};
 
@@ -34,6 +33,7 @@ pub fn init_ui(
                 let y = rand::random_range(50..750) as f64;
                 message_queue.push_back(AppMsg::AddPoint((x, y)));
             });
+            ui.separator();
 
             ui.separator();
             ui.text("Shortest path");

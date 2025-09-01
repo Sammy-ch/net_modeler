@@ -39,7 +39,7 @@ impl AppModel {
                 let source_node = Node {
                     id: link.source_node.clone(),
                     point: (
-                        rand::random_range(50..(750 - canvas_offset_x)),
+                        rand::random_range(50..(750 - canvas_offset_x - 50)),
                         rand::random_range(50..550),
                     ),
                 };
@@ -50,7 +50,7 @@ impl AppModel {
                 let destination_node = Node {
                     id: link.destination_node.clone(),
                     point: (
-                        rand::random_range(50..(750 - canvas_offset_x)),
+                        rand::random_range(50..(750 - canvas_offset_x - 50)),
                         rand::random_range(50..550),
                     ),
                 };
@@ -67,7 +67,6 @@ impl AppModel {
         let width = rl.get_screen_width();
         let height = rl.get_screen_height();
 
-        network.apply_force_directed_layout(width, height, 100, None);
 
         AppModel {
             network,
@@ -136,7 +135,10 @@ impl AppModel {
                         node.point.0 = (mouse_x - offset_x) as i32;
                         node.point.1 = (mouse_y - offset_y) as i32;
                         // Clamp to screen bounds
-                        node.point.0 = node.point.0.clamp(50, self.rl.get_screen_width() - 50);
+                        node.point.0 = node
+                            .point
+                            .0
+                            .clamp(50, self.rl.get_screen_width() - self.canvas_offset_x - 50);
                         node.point.1 = node.point.1.clamp(50, self.rl.get_screen_height() - 50);
                     }
                 }
